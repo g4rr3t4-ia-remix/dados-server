@@ -35,8 +35,8 @@ io.on('connection', (socket) => {
     socket.join(code);
 
     console.log(`Sala creada: ${code} por ${playerName}`);
+    // Solo emitir al creador, no duplicar a la sala
     socket.emit('room-created', { roomCode: code, players: room.players });
-    io.to(code).emit('room-created', { roomCode: code, players: room.players });
   });
 
   // Unirse a sala
@@ -58,41 +58,69 @@ io.on('connection', (socket) => {
     playerRooms.set(socket.id, roomCode.toUpperCase());
     socket.join(roomCode.toUpperCase());
 
+    const newPlayer = room.players[room.players.length - 1];
     console.log(`${playerName} unido a sala ${roomCode}`);
     // Confirmación directa al jugador que se une
     socket.emit('room-joined', {
       roomCode: room.code,
-      player: room.players[room.players.length - 1],
+      player: newPlayer,
       players: room.players,
     });
-    // Aviso a todos los jugadores de la sala (incluyendo el nuevo)
-    io.to(roomCode.toUpperCase()).emit('player-joined', {
-      player: room.players[room.players.length - 1],
+    // Aviso a los OTROS jugadores de la sala (no al que acaba de unirse)
+    socket.to(roomCode.toUpperCase()).emit('player-joined', {
+      player: newPlayer,
       players: room.players,
     });
   });
 
   // Comenzar juego
   socket.on('start-game', ({ roomCode }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+    const code = roomCode.toUpperCase();
+    const room = rooms.get(code);
+    if (!room) {
+      console.log(`start-game: sala ${roomCode} no encontrada`);
+      socket.emit('room-error', { message: 'Sala no encontrada' });
+      return;
+    }
+
+    // Solo el host puede iniciar
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || !player.isHost) {
+      console.log(`start-game: ${socket.id} no es el host`);
+      socket.emit('room-error', { message: 'Solo el anfitrión puede iniciar el juego' });
+      return;
+    }
 
     room.state = 'playing';
     room.gameState = { currentPlayer: 0, round: 0 };
 
-    io.to(roomCode).emit('game-started', {
+    console.log(`Juego iniciado en ${code} por ${player.name}`);
+    io.to(code).emit('game-started', {
+      roomCode: code,
       gameState: room.gameState,
       currentPlayer: room.players[0].id,
+      players: room.players,
     });
   });
 
   // Lanzar dados
   socket.on('roll-dice', ({ roomId }) => {
-    const room = rooms.get(roomId);
-    if (!room) return;
+    const code = roomId.toUpperCase();
+    const room = rooms.get(code);
+    if (!room) {
+      console.log(`roll-dice: sala ${roomId} no encontrada`);
+      return;
+    }
 
     const dice = Array.from({ length: 5 }, () => Math.floor(Math.random() * 6) + 1);
-    io.to(roomId).emit('dice-rolled', { dice, playerId: socket.id });
+    const playerName = room.players.find(p => p.id === socket.id)?.name || 'Desconocido';
+    console.log(`${playerName} lanza dados: ${dice.join(', ')}`);
+    io.to(code).emit('dice-rolled', {
+      dice,
+      playerId: socket.id,
+      playerName,
+      roomCode: code,
+    });
   });
 
   // Desconexión
