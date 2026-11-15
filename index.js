@@ -83,11 +83,11 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Solo el host puede iniciar
+    // Cualquier jugador puede iniciar
     const player = room.players.find(p => p.id === socket.id);
-    if (!player || !player.isHost) {
-      console.log(`start-game: ${socket.id} no es el host`);
-      socket.emit('room-error', { message: 'Solo el anfitrión puede iniciar el juego' });
+    if (!player) {
+      console.log(`start-game: ${socket.id} no está en la sala`);
+      socket.emit('room-error', { message: 'No estás en esta sala' });
       return;
     }
 
