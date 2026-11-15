@@ -34,26 +34,39 @@ io.on('connection', (socket) => {
     playerRooms.set(socket.id, code);
     socket.join(code);
 
+    console.log(`Sala creada: ${code} por ${playerName}`);
+    socket.emit('room-created', { roomCode: code, players: room.players });
     io.to(code).emit('room-created', { roomCode: code, players: room.players });
   });
 
   // Unirse a sala
   socket.on('join-room', ({ roomCode, playerName }) => {
-    const room = rooms.get(roomCode);
+    console.log(`${playerName} intenta unirse a sala: ${roomCode}`);
+    const room = rooms.get(roomCode.toUpperCase());
     if (!room) {
-      socket.emit('error', { message: 'Sala no encontrada' });
+      console.log(`Sala ${roomCode} no encontrada`);
+      socket.emit('room-error', { message: 'Sala no encontrada' });
       return;
     }
     if (room.players.length >= room.maxPlayers) {
-      socket.emit('error', { message: 'Sala llena' });
+      console.log(`Sala ${roomCode} llena (${room.players.length}/${room.maxPlayers})`);
+      socket.emit('room-error', { message: 'Sala llena' });
       return;
     }
 
     room.players.push({ id: socket.id, name: playerName, score: 0, isHost: false });
-    playerRooms.set(socket.id, roomCode);
-    socket.join(roomCode);
+    playerRooms.set(socket.id, roomCode.toUpperCase());
+    socket.join(roomCode.toUpperCase());
 
-    io.to(roomCode).emit('player-joined', {
+    console.log(`${playerName} unido a sala ${roomCode}`);
+    // Confirmación directa al jugador que se une
+    socket.emit('room-joined', {
+      roomCode: room.code,
+      player: room.players[room.players.length - 1],
+      players: room.players,
+    });
+    // Aviso a todos los jugadores de la sala (incluyendo el nuevo)
+    io.to(roomCode.toUpperCase()).emit('player-joined', {
       player: room.players[room.players.length - 1],
       players: room.players,
     });
